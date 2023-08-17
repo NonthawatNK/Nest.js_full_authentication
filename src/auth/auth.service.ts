@@ -2,12 +2,14 @@ import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
 import { AuthDto } from './dto/auth.dto';
 import * as bcrypt from 'bcrypt';
-
+import { JwtService } from '@nestjs/jwt';
+import { jwtSecret } from '../utils/constants';
+import { Request, Response } from 'express';
 
 @Injectable()
 export class AuthService {
 
-    constructor(private prisma: PrismaService) { }
+    constructor(private prisma: PrismaService, private jwt: JwtService) { }
 
 
 
@@ -35,9 +37,9 @@ export class AuthService {
     }
 
 
-    async signin(dto: AuthDto) {
+    async signin(dto: AuthDto, req: Request, res: Response) {
 
-        const { email ,password} = dto
+        const { email, password } = dto
 
         const foundUser = await this.prisma.user.findUnique({ where: { email } })
 
@@ -48,26 +50,33 @@ export class AuthService {
 
         const isMath = await this.comparePasswords({
             password,
-            hash : foundUser.hasdedPassword
+            hash: foundUser.hasdedPassword
         });
 
 
-        if(!isMath){
+        if (!isMath) {
             throw new HttpException("Worng credentials", HttpStatus.BAD_REQUEST)
         }
 
         //sing jwt and return to the user
 
+        const token = await this.singToken({ id: foundUser.id, email: foundUser.email })
 
 
-        return ''
+        if (!token) {
+            throw new HttpException(" ", HttpStatus.FORBIDDEN)
+        }
+
+
+        res.cookie('token', token)
+
+        return res.send({ message: "Logged in succefully" });
     }
 
 
-    async signout() {
-
-
-        return ''
+    async signout( req : Request , res : Response) {
+        res.clearCookie('token')
+        return res.send({ message : 'Logged out succefully'});
     }
 
 
@@ -80,12 +89,20 @@ export class AuthService {
 
     }
 
-    async comparePasswords(args :{password : string , hash :string}){
+    async comparePasswords(args: { password: string, hash: string }) {
 
 
-     return await bcrypt.compare(args.password, args.hash);
+        return await bcrypt.compare(args.password, args.hash);
 
 
+    }
+
+    async singToken(args: { id: string, email: string }) {
+
+        const payload = args
+
+
+        return this.jwt.signAsync(payload, { secret: jwtSecret })
     }
 
 
